@@ -29,9 +29,7 @@ DEFAULT_GAME_HANDLERS = [
     DefaultWaitHandler(),
 ]
 
-
 class Game:
-
     def __init__(self, client: Client, strategy: AiStrategy):
         self.client = client
         self.strategy = strategy
@@ -59,12 +57,15 @@ class Game:
             await_controller(self.last_state)
             self.__handle_state_based_logging()
             handled = False
+            
             # Handle Game Over
             if self.game_over_handler.can_handle(self.last_state):
                 commands = self.game_over_handler.handle(self.last_state, self.run_elites, self.run_bosses, self.strategy.name)
                 for command in commands:
+                    self._attempt_db_log(command)  # <--- NEW
                     self.__send_command(command)
                 break
+                
             # All other behaviours
             for handler in self.strategy.handlers + DEFAULT_GAME_HANDLERS:
                 if handler.can_handle(self.last_state):
@@ -75,24 +76,34 @@ class Game:
                     if action.memory_book is not None:
                         self.the_bots_memory_book = action.memory_book
                         log_to_run("Memory of next action: " + str(vars(self.the_bots_memory_book)))
+                    
                     for command in action.commands:
+                        self._attempt_db_log(command)  # <--- NEW
                         self.__send_command(command)
                     handled = True
                     break
+                    
             if not handled:
                 log_to_run("Dying from not knowing what to do next")
                 raise Exception("ah I didn't know what to do!")
+
+    def _attempt_db_log(self, command):
+        """Silently logs to DB. Will not crash game if it fails."""
+        try:
+            if hasattr(self, 'logger') and self.logger is not None:
+                state_dict = self.last_state.game_state()
+                self.logger.log_action(state_dict, command)
+        except Exception:
+            pass # Ignore DB errors so the bot keeps playing
 
     def __send_command(self, command: str):
         self.last_state = GameState(json.loads(self.client.send_message(command)), self.the_bots_memory_book)
 
     def __send_silent_command(self, command: str):
-        self.last_state = GameState(json.loads(self.client.send_message(command, silent=True)),
-                                    self.the_bots_memory_book)
+        self.last_state = GameState(json.loads(self.client.send_message(command, silent=True)), self.the_bots_memory_book)
 
     def __send_setup_command(self, command: str):
-        self.last_state = GameState(json.loads(self.client.send_message(command, before_run=True)),
-                                    self.the_bots_memory_book)
+        self.last_state = GameState(json.loads(self.client.send_message(command, before_run=True)), self.the_bots_memory_book)
 
     def __handle_state_based_logging(self):
         monsters = self.last_state.get_monsters()
