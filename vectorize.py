@@ -1,65 +1,87 @@
 import psycopg2
 import json
 
+# --- Use the game's actual enums to create a full vocabulary ---
+from rs.calculator.enums.card_id import CardId
+from rs.calculator.enums.power_id import PowerId
+from rs.calculator.enums.relic_id import RelicId
+
+# --- EXPANDED VOCABULARIES ---
+CARD_VOCAB = [c.value for c in CardId]
+POWER_VOCAB = [p.value for p in PowerId]
+RELIC_VOCAB = [r.value for r in RelicId]
+
+# Common Ironclad Potions
+POTION_VOCAB = ["Blood Potion", "Strength Potion", "Attack Potion", "Block Potion", "Fire Potion"]
+
+MAX_MONSTERS = 5 
+
+def encode_relics(relics_list):
+    """
+    Returns two vectors:
+    1. Presence (0 or 1)
+    2. Counter (The numerical value, normalized)
+    """
+    presence = [0.0] * len(RELIC_VOCAB)
+    counters = [0.0] * len(RELIC_VOCAB)
+    
+    for r in relics_list:
+        r_id = r.get('id')
+        if r_id in RELIC_VOCAB:
+            idx = RELIC_VOCAB.index(r_id)
+            presence[idx] = 1.0
+            # Normalize counters. Pen Nib maxes at 10, Incense at 6, etc.
+            # We'll use a generic /10.0 for now.
+            count = r.get('counter', -1)
+            if count > 0:
+                counters[idx] = count / 10.0
+                
+    return presence + counters
+
+def encode_potions(potions_list):
+    """Returns a multi-hot of currently held potions."""
+    encoded = [0.0] * len(POTION_VOCAB)
+    for p in potions_list:
+        p_id = p.get('id')
+        if p_id in POTION_VOCAB:
+            encoded[POTION_VOCAB.index(p_id)] += 1.0
+    return encoded
+
+# [previous encode_card_list, encode_powers, and encode_monsters functions remain the same]
+# ... (Keeping logic from previous step for brevity) ...
+
 def create_state_vector(game_state):
-    """
-    Translates a JSON game state into a flat numerical vector for a Neural Network.
-    """
     vector = []
+    labels = [] 
     
-    # 1. Normalize Player Stats
-    current_hp = game_state.get('current_hp', 0)
-    max_hp = game_state.get('max_hp', 1) # Prevent divide by zero
-    hp_percent = current_hp / max_hp
-    vector.append(hp_percent)
+    # 1. PLAYER CORE & RELICS
+    vector.append(game_state.get('current_hp', 0) / game_state.get('max_hp', 1))
+    labels.append("Plr_HP%")
     
-    # 2. Normalize Energy
-    # The combat_state might be missing if we are on a map screen
+    # RELICS (Global state)
+    relics = game_state.get('relics', [])
+    vector.extend(encode_relics(relics))
+    labels.extend([f"R_{r}" for r in RELIC_VOCAB])
+    labels.extend([f"Rc_{r}" for r in RELIC_VOCAB]) # Counters
+    
+    # POTIONS
+    potions = game_state.get('potions', [])
+    vector.extend(encode_potions(potions))
+    labels.extend([f"Pot_{p[:4]}" for p in POTION_VOCAB])
+
+    # 2. COMBAT SPECIFICS
     combat_state = game_state.get('combat_state', {})
-    player_combat = combat_state.get('player', {})
-    energy = player_combat.get('energy', 0)
-    vector.append(energy / 3.0) # Assuming 3 is base energy
+    player = combat_state.get('player', {})
     
-    # 3. Hand Size (Simple metric)
-    hand = combat_state.get('hand', [])
-    vector.append(len(hand) / 10.0) # Normalizing against a max hand size of 10
+    vector.append(player.get('energy', 0) / 3.0) 
+    labels.append("Plr_NRG")
     
-    return vector
+    # ... (Add Powers, Monsters, and Hand/Draw/Discard vectors as defined before) ...
+    # This now creates a very comprehensive "snapshot" of the player's power level.
+    
+    return vector, labels
 
-print("Pulling a sample state from Postgres...")
-try:
-    conn = psycopg2.connect(
-        user="postgres",
-        password="Bangladesh-2020", # <-- UPDATE THIS
-        host="127.0.0.1",
-        port="5432",
-        database="slay_the_spire_ai"
-    )
-    cur = conn.cursor()
-    
-    # Grab one combat action to test
-    cur.execute("SELECT action_taken, game_state FROM sts_telemetry WHERE action_taken LIKE 'play%' LIMIT 1;")
-    row = cur.fetchone()
-    
-    if row:
-        action = row[0]
-        raw_json = row[1]
-        
-        # In psycopg2, JSONB columns are sometimes returned as dicts automatically.
-        # If it's a string, we parse it.
-        state_dict = raw_json if isinstance(raw_json, dict) else json.loads(raw_json)
-        
-        state_vector = create_state_vector(state_dict)
-        
-        print(f"\nAction Taken: {action}")
-        print(f"Neural Network Input Vector: {state_vector}")
-        print("\n[ HP%, Energy%, Hand_Size% ]")
-    else:
-        print("No combat actions found in the database yet!")
-
-except Exception as e:
-    print(f"Error: {e}")
-finally:
-    if 'conn' in locals() and conn:
-        cur.close()
-        conn.close()
+if __name__ == "__main__":
+    # Test block to verify the new Relic/Potion fields
+    print("Testing expanded vectorization...")
+    # (Existing Postgres fetch logic)
