@@ -6,7 +6,7 @@ from collections import deque
 import sys
 
 # From the project
-from rs.ai.deep_learning.rl_agent import RLAgent, ACTION_SPACE
+from rl_agent import RLAgent, ACTION_SPACE
 from vectorize import create_state_vector
 from rs.api.client import Client
 from rs.machine.game import Game

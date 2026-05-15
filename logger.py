@@ -23,6 +23,10 @@ class STSLogger:
         except Exception as e:
             sys.stderr.write(f"\n[DB WARNING] Could not connect to Postgres. Error: {e}\n")
 
+    def new_run(self):
+        """Generates a new UUID for the start of a new run."""
+        self.run_id = str(uuid.uuid4())
+
     def log_action(self, state_dict, action_command):
         if not self.cur:
             return 

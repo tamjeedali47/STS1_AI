@@ -38,6 +38,10 @@ class Game:
         self.game_over_handler: DefaultGameOverHandler = DefaultGameOverHandler()
 
     def start(self, seed: str = ""):
+        # If we have a logger, tell it a new run is starting so it can generate a new run_id
+        if hasattr(self, 'logger') and self.logger is not None:
+            self.logger.new_run()
+
         self.the_bots_memory_book.set_new_game_state()
         self.run_elites = []
         self.last_elite = ""

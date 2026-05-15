@@ -25,6 +25,16 @@ def fetch_data(query):
 def generate_report():
     print("Pulling live data from the Spire...")
 
+    # --- QUERY 0: Run Statistics ---
+    # Get total records and completed runs to see data collection progress.
+    stats_query = """
+        SELECT
+            COUNT(*) as total_records,
+            COUNT(DISTINCT run_id) as total_runs
+        FROM sts_telemetry;
+    """
+    df_stats = fetch_data(stats_query)
+
     # --- QUERY 1: Card Preferences ---
     # We want to see what cards the Ironclad relies on the most.
     card_query = """
@@ -48,9 +58,18 @@ def generate_report():
     """
     df_hp = fetch_data(hp_query)
 
-    if df_cards.empty or df_hp.empty:
+    if df_stats.empty or df_stats['total_records'][0] == 0:
         print("Not enough data yet! Let the bot play a few more floors.")
         return
+
+    # --- PRINT SUMMARY ---
+    total_records = df_stats['total_records'][0]
+    total_runs = df_stats['total_runs'][0]
+    print("\n" + "="*30)
+    print(f"  Data Collection Progress")
+    print(f"  - Total Runs Logged: {total_runs}")
+    print(f"  - Total Decisions Logged: {total_records}")
+    print("="*30 + "\n")
 
     # --- BUILD THE VISUALS ---
     # Create a dashboard with 2 subplots (1 row, 2 columns)
