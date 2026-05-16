@@ -3,6 +3,7 @@ import random
 
 from brain import IroncladBrain
 from vectorize import create_state_vector, VECTOR_SIZE
+from rl_agent_handler import RLAgentHandler
 
 # This defines what the AI can do. The index corresponds to the output of the neural network.
 ACTION_SPACE = [
@@ -17,6 +18,8 @@ class RLAgent:
         self.name = "DeepLearningAgent"
 
         self.brain = IroncladBrain(input_size=VECTOR_SIZE, num_actions=len(ACTION_SPACE))
+        # This handler acts as the bridge between the game loop and the AI's brain.
+        self.handlers = [RLAgentHandler(self)]
         if model_path:
             self.load_model(model_path)
         self.brain.eval() # Default to evaluation mode for inference
